@@ -1,12 +1,13 @@
 module Parser
   ( Expression(VarT, LambdaT, AppT),
     Identifier,
-    Statement(Macro, Compute),
-    Program,
+    Program(P),
     Parser.parseProgramFromFile,
     Parser.parseTermFromString
   ) where
 
+import qualified Data.Map    as M
+import           Debug.Trace
 import           Text.Parsec
 
 type Identifier = String
@@ -22,25 +23,22 @@ instance Show Expression where
   show (AppT left right)    = "(" ++ show left ++ " " ++ show right ++ ")"
   show (LambdaT id subexpr) = "(λ" ++ id ++ "." ++ show subexpr ++ ")"
 
-data Statement =
-  Macro Identifier Expression
-  | Compute Expression
-
-instance Show Statement where
-  show (Macro id expr) = "macro " ++ id ++ " " ++ show expr
-  show (Compute expr)  = show expr
-
-type Program = [Statement]
+data Program = P (M.Map Identifier Expression) Expression deriving (Show)
 
 parseParenthesized :: Parsec String u a -> Parsec String u a
 parseParenthesized = between (char '(') (char ')')
 
-parseIdentifier :: Parsec String u String
 parseIdentifier = many1 letter
 
+sp = oneOf " \t"
+
 parseLambda = do
-  identifier <- between ((char '\\' <|> char 'λ') >> spaces) (spaces >> char '.') parseIdentifier
-  spaces
+  char '\\' <|> char 'λ'
+  skipMany sp
+  identifier <- parseIdentifier
+  skipMany sp
+  char '.'
+  skipMany sp
   inner <- parseTerm
   return $ LambdaT identifier inner
 
@@ -48,31 +46,30 @@ parseVar = do
   identifier <- parseIdentifier
   return $ VarT identifier
 
-parseTerm = between spaces spaces $ parseNonApp `chainl1` parseTermCont
+parseTerm = parseNonApp `chainl1` parseTermCont
   where
-    parseNonApp = parseTerm <|> parseLambda <|> parseVar
+    parseNonApp = parseParenthesized parseTerm <|> parseLambda <|> parseVar
     parseTermCont = do
-      spaces
+      skipMany1 sp
       return AppT
 
 parseMacroStatement = do
   string "macro"
-  spaces
+  skipMany1 sp
   name <- parseIdentifier
-  spaces
+  skipMany1 sp
   expression <- parseTerm
-  return $ Macro name expression
+  endOfLine
+  return $ (name, expression)
 
-parseComputeStatement = do
-  expression <- parseTerm
-  return $ Compute expression
-
-parseStatement = parseMacroStatement <|> parseComputeStatement
-
-parseProgram = parseStatement `sepBy` many1 endOfLine
+parseProgram = do
+  macros <- many parseMacroStatement
+  expr <- parseTerm
+  skipMany endOfLine <|> eof
+  return $ P (M.fromList macros) expr
 
 parseProgramFromFile :: String -> IO (Either ParseError Program)
 parseProgramFromFile filename = readFile filename >>= return . (runParser parseProgram () filename)
 
-parseTermFromString :: String -> IO (Either ParseError Expression)
-parseTermFromString = return . (runParser parseTerm () "")
+parseTermFromString :: String -> Either ParseError Expression
+parseTermFromString = runParser parseTerm () ""

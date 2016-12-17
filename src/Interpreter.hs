@@ -1,6 +1,7 @@
 module Interpreter
   (reduce,
-   fullReduce
+   fullReduce,
+   evaluate
   ) where
 
 import qualified Control.Monad.Trans.State as ST
@@ -64,22 +65,13 @@ reduce x = x
 fullReduce :: Expression -> Expression
 fullReduce = until isValue reduce
 
--- Issues:
--- 1. Compute instructions may depend on macros defined later on
--- 2. Macros may depend on other macros!
--- Ideas:
--- Sort the instructions so that Compute always come at the end
--- Nothing to be done about macro dependance.
-evaluate :: Program -> [Expression]
-evaluate program = ST.evalState (run program) M.empty
+evaluate :: Program -> Expression
+evaluate (P macros initial_expression) = step initial_expression
   where
-    run :: Program -> ST.State (M.Map Identifier Expression) [Expression]
-    run (x:xs) = do
-      case x of
-        Macro identifier expression ->
-          ST.modify (M.insert identifier  expression)
-        Compute expression ->
-          undefined
-      return []
-    run [] = return []
-
+    step :: Expression -> Expression
+    step expression =
+      let fv = freeVariables expression in
+      foldr (\varName expr ->
+               case M.lookup varName macros of
+                 Nothing         -> expr
+                 Just definition -> substitute expr varName definition) expression fv

@@ -1,6 +1,7 @@
 module Main where
 
 import           Control.Monad      (liftM)
+import           Interpreter
 import           Parser
 import           System.Environment (getArgs)
 
@@ -11,5 +12,5 @@ main = do
 
   case ast of
     Left error -> print error
-    Right ast  -> print ast
+    Right ast  -> print $ evaluate ast
 

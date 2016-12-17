@@ -6,7 +6,6 @@ import           Test.QuickCheck
 rightParseString :: String -> Expression
 rightParseString s =
   case parseTermFromString s of
-    Left err -> error err
     Right f  -> f
 
 reduceString :: String -> Expression
