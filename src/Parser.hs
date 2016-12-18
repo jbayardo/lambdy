@@ -2,6 +2,7 @@ module Parser
   ( Expression(VarT, LambdaT, AppT),
     Identifier,
     Program(P),
+    MacroStorage,
     Parser.parseProgramFromFile,
     Parser.parseTermFromString
   ) where
@@ -23,7 +24,9 @@ instance Show Expression where
   show (AppT left right)    = "(" ++ show left ++ " " ++ show right ++ ")"
   show (LambdaT id subexpr) = "(λ" ++ id ++ "." ++ show subexpr ++ ")"
 
-data Program = P (M.Map Identifier Expression) Expression deriving (Show)
+type MacroStorage = M.Map Identifier Expression
+
+data Program = P MacroStorage Expression deriving (Show)
 
 parseParenthesized :: Parsec String u a -> Parsec String u a
 parseParenthesized = between (char '(') (char ')')

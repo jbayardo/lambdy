@@ -1,8 +1,4 @@
-module Interpreter
-  (reduce,
-   fullReduce,
-   evaluate
-  ) where
+module Interpreter where
 
 import qualified Control.Monad.Trans.State as ST
 import qualified Data.Map                  as M
@@ -65,13 +61,20 @@ reduce x = x
 fullReduce :: Expression -> Expression
 fullReduce = until isValue reduce
 
-evaluate :: Program -> Expression
-evaluate (P macros initial_expression) = step initial_expression
+reduceWithContext :: Expression -> MacroStorage -> Expression
+reduceWithContext expr@(AppT left right) macros =
+  if S.null fv then reduce expr
+  else do
+    foldr (\varName e ->
+             case M.lookup varName macros of
+               Nothing          -> e
+               Just replacement -> substitute e varName replacement
+          ) expr fv
+  where fv = freeVariables left
+reduceWithContext expr _ = reduce expr
+
+evaluate :: Program -> [Expression]
+evaluate (P macros expr) = iterate step expr
   where
     step :: Expression -> Expression
-    step expression =
-      let fv = freeVariables expression in
-      foldr (\varName expr ->
-               case M.lookup varName macros of
-                 Nothing         -> expr
-                 Just definition -> substitute expr varName definition) expression fv
+    step e = reduceWithContext e macros
