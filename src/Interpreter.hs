@@ -47,34 +47,36 @@ substitute original@(LambdaT bound subexpression) identifier expression
     substitute renamed identifier expression
   | otherwise = LambdaT bound $ substitute subexpression identifier expression
 
-reduce :: Expression -> Expression
-reduce (AppT a b) =
+reduceByValue :: Expression -> Expression
+reduceByValue (AppT a b) =
   if isValue a then
     if isValue b then beta a b -- Beta reduction
-    else AppT a (reduce b) -- Eta reduction
-  else AppT (reduce a) b -- Mu reduction
+    else AppT a (reduceByValue b) -- Eta reduction
+  else AppT (reduceByValue a) b -- Mu reduction
   where
     beta (LambdaT id expr) b = substitute expr id b
-reduce x = x
+reduceByValue x = x
 
--- This may hang
-fullReduce :: Expression -> Expression
-fullReduce = until isValue reduce
-
-reduceWithContext :: Expression -> MacroStorage -> Expression
-reduceWithContext expr@(AppT left right) macros =
-  if S.null fv then reduce expr
-  else do
-    foldr (\varName e ->
-             case M.lookup varName macros of
-               Nothing          -> e
-               Just replacement -> substitute e varName replacement
-          ) expr fv
-  where fv = freeVariables left
-reduceWithContext expr _ = reduce expr
+reduceByName :: Expression -> Expression
+reduceByName (AppT a b) =
+  if isValue a then beta a b
+  else AppT (reduceByName a) b
+  where
+    beta (LambdaT id expr) b = substitute expr id b
+reduceByName x = x
 
 evaluate :: Program -> [Expression]
-evaluate (P macros expr) = iterate step expr
+evaluate (P macros expr) = iterate reduceByName (expandMacros expr)
   where
-    step :: Expression -> Expression
-    step e = reduceWithContext e macros
+    expandMacros :: Expression -> Expression
+    expandMacros =
+      until
+        -- Until there aren't any macros to expand
+        (\expr -> S.null (freeVariables expr `S.intersection` macroS))
+        -- Expand the expression
+        (\expr -> foldr (\varName e ->
+                           case M.lookup varName macros of
+                             Nothing -> e
+                             Just replacement -> substitute e varName replacement) expr (freeVariables expr))
+
+    macroS = S.fromList $ M.keys macros
